@@ -7,6 +7,8 @@ from webdriver_manager.chrome import ChromeDriverManager
 from bs4 import BeautifulSoup
 import pandas as pd
 import time
+import requests
+from tqdm import tqdm
 
 def scroll_page(driver, scroll_duration=10):
     """Scroll the page for a specified duration."""
@@ -14,6 +16,7 @@ def scroll_page(driver, scroll_duration=10):
     while time.time() - start_time < scroll_duration:
         driver.execute_script("window.scrollBy(0, 500);")
         time.sleep(0.5)
+
 
 def get_ecb_press_urls():
     url = "https://www.ecb.europa.eu/press/pubbydate/html/index.en.html?name_of_publication=Press%20release"
@@ -31,9 +34,9 @@ def get_ecb_press_urls():
         print(f"Error while waiting for the page to load: {e}")
         driver.quit()
         return []
-    
+
     # Scroll the page to have the maximum of dynamic content
-    scroll_page(driver, scroll_duration=115)
+    scroll_page(driver, scroll_duration=110)
 
     # Scraping content
     soup = BeautifulSoup(driver.page_source, "html.parser")
@@ -57,8 +60,36 @@ def get_ecb_press_urls():
     driver.quit()
     return urls_and_titles
 
+def get_text_from_url(url):
+    """Visit a URL and retrieve the text of <p> tags inside <div class='section'> using requests."""
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+
+        soup = BeautifulSoup(response.text, "html.parser")
+
+        section_divs = soup.find_all('div', class_='section')
+        if not section_divs:
+            print(f"No <div class='section'> found on {url}")
+            return ""
+
+        for section_div in section_divs:
+            paragraphs = section_div.find_all('p')
+            if paragraphs:
+
+                # Combine the text from all <p> tags
+                text = " ".join(p.get_text(strip=True) for p in paragraphs)
+                return text
+
+        print(f"No <p> tags found in any <div class='section'> on {url}")
+        return ""
+
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching content from {url}: {e}")
+        return ""
+    
 def save_to_csv(data, output_file="data/ecb_press_releases.csv"):
-    # Save data to a CSV file
+    """Save data to a CSV file."""
     if data:
         df = pd.DataFrame(data)
         df.to_csv(output_file, index=False, encoding="utf-8")
@@ -66,8 +97,16 @@ def save_to_csv(data, output_file="data/ecb_press_releases.csv"):
     else:
         print("No articles found.")
 
+
 if __name__ == "__main__":
-    # Scrape and save press releases
+    # Scrape press releases
     articles = get_ecb_press_urls()
     print(f"Found {len(articles)} articles.")
+
+    # Retrieve the text for each article
+    for article in tqdm(articles):
+        article_text = get_text_from_url(article["url"])
+        article["text"] = article_text  # Add the text content to the article
+
+    # Save the enhanced data to CSV
     save_to_csv(articles)
