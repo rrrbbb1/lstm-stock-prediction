@@ -3,6 +3,7 @@ import os
 import pandas as pd
 import yfinance as yf
 from datetime import datetime
+from tqdm.asyncio import tqdm
 
 # Function to fetch S&P 500 tickers and companies from Wikipedia
 def get_sp500_tickers():
@@ -24,8 +25,7 @@ def get_sp500_tickers():
 async def async_download(ticker, start_date, end_date):
     loop = asyncio.get_event_loop()
     try:
-        print(f"Downloading data for {ticker}...")
-        data = await loop.run_in_executor(None, yf.download, ticker, start_date, end_date)
+        data = await loop.run_in_executor(None, lambda: yf.download(ticker, start_date, end_date, progress=False))
         return data
     except Exception as e:
         print(f"Error downloading data for {ticker}: {e}")
@@ -34,7 +34,6 @@ async def async_download(ticker, start_date, end_date):
 # Function to fetch data with retries and clean it
 async def fetch_with_retries(ticker, company, start_date, end_date, retries=3, delay=1):
     for attempt in range(retries):
-        print(f"Attempt {attempt + 1} for {ticker} ({company})")
         data = await async_download(ticker, start_date, end_date)
 
         if data is not None and not data.empty:
@@ -47,23 +46,22 @@ async def fetch_with_retries(ticker, company, start_date, end_date, retries=3, d
             columns = ["Date", "Open", "High", "Low", "Close", "Volume", "Company"]
             data = pd.DataFrame(data, columns=columns)
             return data
-
-        print(f"Retrying {ticker} after {delay} seconds...")
         await asyncio.sleep(delay)
 
     print(f"Failed to fetch data for {ticker} after {retries} retries.")
     return pd.DataFrame()
 
 # Main function to fetch all data
-async def fetch_all_data(start_date, end_date, delay_between_requests=1):
+async def fetch_all_data(start_date, end_date, delay_between_requests=0.5):
     tickers, companies = get_sp500_tickers()
     results = []
-    for ticker, company in zip(tickers, companies):
-        print(f"Starting fetch for {ticker} ({company})")
-        raw_data = await fetch_with_retries(ticker, company, start_date, end_date)
-        if not raw_data.empty:
-            results.append(raw_data)
-        await asyncio.sleep(delay_between_requests)
+    with tqdm(total=len(tickers), desc="Fetching data", dynamic_ncols=True) as pbar:
+        for ticker, company in zip(tickers, companies):
+            raw_data = await fetch_with_retries(ticker, company, start_date, end_date)
+            if not raw_data.empty:
+                results.append(raw_data)
+            await asyncio.sleep(delay_between_requests)
+            pbar.update(1)
     return pd.concat(results, ignore_index=True) if results else pd.DataFrame()
 
 # Entry point
