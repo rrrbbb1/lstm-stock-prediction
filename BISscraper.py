@@ -1,30 +1,31 @@
 from bs4 import BeautifulSoup
 import pandas as pd
 import re
-from playwright.sync_api import sync_playwright
+from playwright.async_api import async_playwright
+import asyncio
 import requests
 from tqdm import tqdm
 
-def get_BIS_press_urls():
-    """Scrape all BIS press release URLs and their dates using Playwright."""
+async def get_BIS_press_urls():
+    """Scrape all BIS press release URLs and their dates using Playwright's Async API."""
     articles = []  # List to store articles with URLs and dates
 
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)  # Launch the browser in headless mode
-        page = browser.new_page()  # Open a new page
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)  # Launch the browser in headless mode
+        page = await browser.new_page()  # Open a new page
         
         for k in tqdm(range(1, 717)):  # Iterate through pages
             url = f"https://www.bis.org/cbspeeches/index.htm?cbspeeches_page={k}"            
             # Navigate to the page
-            page.goto(url)
-            page.wait_for_timeout(300)
+            await page.goto(url)
+            await asyncio.sleep(0.5)  # Add a delay to ensure the page fully loads
 
             # Extract rendered HTML
-            html = page.content()
+            html = await page.content()
             soup = BeautifulSoup(html, "html.parser")
 
             rows = soup.find_all('tr', class_='item')
-            for i, row in enumerate(rows):
+            for row in rows:
                 # Extract the date
                 date_cell = row.find('td', class_='item_date')
                 date = date_cell.get_text(strip=True) if date_cell else "No date available"
@@ -43,7 +44,7 @@ def get_BIS_press_urls():
                     "title": title
                 })
 
-        browser.close()
+        await browser.close()
     return articles
 
 def get_text_from_url(url):
@@ -53,7 +54,7 @@ def get_text_from_url(url):
         return ""
 
     # Perform the GET request
-    response = requests.get(url, timeout=10)
+    response = requests.get(url, timeout=500)
     if response.status_code != 200:
         print(f"Error fetching content from {url}: Status code {response.status_code}")
         return ""
@@ -69,7 +70,7 @@ def get_text_from_url(url):
     # Combine the text from all <p> tags
     text = " ".join(p.get_text(strip=True) for p in paragraphs)
     return text
-    
+
 def save_to_csv(data, output_file="data/bis_press_releases.csv"):
     """Save data (URLs, dates, titles, and text content) to a CSV file."""
     if not data:
@@ -80,9 +81,9 @@ def save_to_csv(data, output_file="data/bis_press_releases.csv"):
     df.to_csv(output_file, index=False, encoding="utf-8")
     print(f"Saved {len(data)} entries to '{output_file}'.")
 
-if __name__ == "__main__":
+async def main():
     # Scrape press release URLs
-    articles = get_BIS_press_urls()
+    articles = await get_BIS_press_urls()
     print(f"Found {len(articles)} articles. Start scraping content...")
 
     # Retrieve text content from each URL
@@ -95,3 +96,7 @@ if __name__ == "__main__":
 
     # Save the articles with content to a CSV
     save_to_csv(articles)
+
+# Run the async main function
+if __name__ == "__main__":
+    asyncio.run(main())
