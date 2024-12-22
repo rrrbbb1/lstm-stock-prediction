@@ -1,3 +1,4 @@
+import os
 from bs4 import BeautifulSoup
 import pandas as pd
 import re
@@ -5,6 +6,9 @@ from playwright.async_api import async_playwright
 import asyncio
 import requests
 from tqdm import tqdm
+import nest_asyncio
+
+nest_asyncio.apply()  # Allow nested event loops
 
 async def get_BIS_press_urls():
     """Scrape all BIS press release URLs and their dates using Playwright's Async API."""
@@ -77,6 +81,13 @@ def save_to_csv(data, output_file="data/bis_press_releases.csv"):
         print("No data found to save.")
         return
 
+    # Ensure the output directory exists
+    output_dir = os.path.dirname(output_file)
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+        print(f"Directory '{output_dir}' created.")
+
+    # Create a DataFrame and save it to a CSV file
     df = pd.DataFrame(data)  # Create a DataFrame with the articles
     df.to_csv(output_file, index=False, encoding="utf-8")
     print(f"Saved {len(data)} entries to '{output_file}'.")
